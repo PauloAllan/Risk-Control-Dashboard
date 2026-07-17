@@ -58,6 +58,25 @@ def insert_record(values: tuple) -> None:
         )
 
 
+def update_record(record_id: int, values: tuple) -> None:
+    with get_connection() as conn:
+        conn.execute(
+            """
+            UPDATE escoltas
+            SET data = ?, placa = ?, transportadora = ?, valor_carga = ?, destino = ?,
+                ae = ?, tipo_escolta = ?, observacao = ?, horario_apresentacao = ?,
+                horario_saida = ?
+            WHERE id = ?
+            """,
+            (*values, record_id),
+        )
+
+
+def delete_record(record_id: int) -> None:
+    with get_connection() as conn:
+        conn.execute("DELETE FROM escoltas WHERE id = ?", (record_id,))
+
+
 def load_records() -> pd.DataFrame:
     with get_connection() as conn:
         df = pd.read_sql_query("SELECT * FROM escoltas ORDER BY data DESC, id DESC", conn)
@@ -168,6 +187,9 @@ def records_page() -> None:
     if df.empty:
         st.info("Ainda não existem registros. Use a página “Adicionar informações” para começar.")
         return
+    if "records_message" in st.session_state:
+        st.success(st.session_state.pop("records_message"))
+
     display = df.drop(columns=["id", "criado_em"], errors="ignore").copy()
     display["data"] = display["data"].dt.strftime("%d/%m/%Y")
     display["valor_carga"] = display["valor_carga"].map(currency)
@@ -180,6 +202,61 @@ def records_page() -> None:
     st.download_button("⬇️ Baixar em Excel", data=to_excel(df), file_name="controle_escoltas.xlsx",
                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", type="primary")
     st.dataframe(display, use_container_width=True, hide_index=True, height=500)
+
+    st.divider()
+    st.subheader("Editar ou apagar registro")
+
+    def format_record(record_id: int) -> str:
+        selected = df.loc[df["id"] == record_id].iloc[0]
+        return f"#{record_id} | {selected['data']:%d/%m/%Y} | {selected['placa']} | A.E. {selected['ae']}"
+
+    selected_id = st.selectbox("Selecione o registro", df["id"].tolist(), format_func=format_record)
+    record = df.loc[df["id"] == selected_id].iloc[0]
+    edit_tab, delete_tab = st.tabs(["Editar", "Apagar"])
+
+    with edit_tab:
+        with st.form(f"editar_escolta_{selected_id}"):
+            col1, col2 = st.columns(2)
+            with col1:
+                operation_date = st.date_input("Data *", value=record["data"].date(), format="DD/MM/YYYY")
+                plate = st.text_input("Placa *", value=record["placa"], key=f"edit_plate_{selected_id}").upper().strip()
+                carrier = st.text_input("Transportadora *", value=record["transportadora"], key=f"edit_carrier_{selected_id}").strip()
+                cargo_value = st.number_input("Valor da carga (R$) *", min_value=0.0, value=float(record["valor_carga"]), step=100.0, format="%.2f", key=f"edit_value_{selected_id}")
+                destination = st.text_input("Destino *", value=record["destino"], key=f"edit_destination_{selected_id}").strip()
+            with col2:
+                ae = st.text_input("A.E. (8 dígitos) *", value=str(record["ae"]), max_chars=8, key=f"edit_ae_{selected_id}").strip()
+                escort_type = st.radio("Tipo de escolta *", ["Individual", "Comboio"], index=["Individual", "Comboio"].index(record["tipo_escolta"]), horizontal=True, key=f"edit_type_{selected_id}")
+                presentation = st.time_input("Horário de apresentação *", value=time.fromisoformat(record["horario_apresentacao"]), key=f"edit_presentation_{selected_id}")
+                departure = st.time_input("Horário de saída *", value=time.fromisoformat(record["horario_saida"]), key=f"edit_departure_{selected_id}")
+                observation = st.text_area("Observação", value=record["observacao"] if pd.notna(record["observacao"]) else "", height=105, key=f"edit_observation_{selected_id}").strip()
+            save_changes = st.form_submit_button("Salvar alterações", type="primary", use_container_width=True)
+
+        if save_changes:
+            errors = []
+            if not plate:
+                errors.append("Informe a placa.")
+            if not carrier:
+                errors.append("Informe a transportadora.")
+            if not destination:
+                errors.append("Informe o destino.")
+            if not (ae.isdigit() and len(ae) == 8):
+                errors.append("A.E. deve conter exatamente 8 dígitos numéricos.")
+            if errors:
+                st.error(" ".join(errors))
+            else:
+                update_record(selected_id, (operation_date.isoformat(), plate, carrier, cargo_value,
+                                            destination, ae, escort_type, observation,
+                                            presentation.strftime("%H:%M"), departure.strftime("%H:%M")))
+                st.session_state.records_message = "Registro atualizado com sucesso."
+                st.rerun()
+
+    with delete_tab:
+        st.warning(f"Você está prestes a apagar o registro da placa {record['placa']} (A.E. {record['ae']}).")
+        confirm_delete = st.checkbox("Confirmo que desejo apagar este registro", key=f"confirm_delete_{selected_id}")
+        if st.button("Apagar registro", type="primary", disabled=not confirm_delete, key=f"delete_{selected_id}"):
+            delete_record(selected_id)
+            st.session_state.records_message = "Registro apagado com sucesso."
+            st.rerun()
 
 
 def dashboard_page() -> None:
