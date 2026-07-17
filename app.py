@@ -204,59 +204,111 @@ def records_page() -> None:
     st.dataframe(display, use_container_width=True, hide_index=True, height=500)
 
     st.divider()
-    st.subheader("Editar ou apagar registro")
+    st.subheader("Gerenciar um registro")
+    st.caption("Selecione a placa desejada e escolha a ação que quer realizar.")
 
     def format_record(record_id: int) -> str:
         selected = df.loc[df["id"] == record_id].iloc[0]
-        return f"#{record_id} | {selected['data']:%d/%m/%Y} | {selected['placa']} | A.E. {selected['ae']}"
+        return f"{selected['placa']} | {selected['data']:%d/%m/%Y} | A.E. {selected['ae']}"
 
-    selected_id = st.selectbox("Selecione o registro", df["id"].tolist(), format_func=format_record)
-    record = df.loc[df["id"] == selected_id].iloc[0]
-    edit_tab, delete_tab = st.tabs(["Editar", "Apagar"])
+    selected_id = st.selectbox("Selecione a placa", df["id"].tolist(), format_func=format_record)
+    edit_column, delete_column = st.columns(2)
+    with edit_column:
+        st.button("Editar registro", type="primary", use_container_width=True,
+                  on_click=open_record_page, args=("Editar", selected_id))
+    with delete_column:
+        st.button("Apagar registro", use_container_width=True,
+                  on_click=open_record_page, args=("Apagar", selected_id))
 
-    with edit_tab:
-        with st.form(f"editar_escolta_{selected_id}"):
-            col1, col2 = st.columns(2)
-            with col1:
-                operation_date = st.date_input("Data *", value=record["data"].date(), format="DD/MM/YYYY")
-                plate = st.text_input("Placa *", value=record["placa"], key=f"edit_plate_{selected_id}").upper().strip()
-                carrier = st.text_input("Transportadora *", value=record["transportadora"], key=f"edit_carrier_{selected_id}").strip()
-                cargo_value = st.number_input("Valor da carga (R$) *", min_value=0.0, value=float(record["valor_carga"]), step=100.0, format="%.2f", key=f"edit_value_{selected_id}")
-                destination = st.text_input("Destino *", value=record["destino"], key=f"edit_destination_{selected_id}").strip()
-            with col2:
-                ae = st.text_input("A.E. (8 dígitos) *", value=str(record["ae"]), max_chars=8, key=f"edit_ae_{selected_id}").strip()
-                escort_type = st.radio("Tipo de escolta *", ["Individual", "Comboio"], index=["Individual", "Comboio"].index(record["tipo_escolta"]), horizontal=True, key=f"edit_type_{selected_id}")
-                presentation = st.time_input("Horário de apresentação *", value=time.fromisoformat(record["horario_apresentacao"]), key=f"edit_presentation_{selected_id}")
-                departure = st.time_input("Horário de saída *", value=time.fromisoformat(record["horario_saida"]), key=f"edit_departure_{selected_id}")
-                observation = st.text_area("Observação", value=record["observacao"] if pd.notna(record["observacao"]) else "", height=105, key=f"edit_observation_{selected_id}").strip()
-            save_changes = st.form_submit_button("Salvar alterações", type="primary", use_container_width=True)
 
-        if save_changes:
-            errors = []
-            if not plate:
-                errors.append("Informe a placa.")
-            if not carrier:
-                errors.append("Informe a transportadora.")
-            if not destination:
-                errors.append("Informe o destino.")
-            if not (ae.isdigit() and len(ae) == 8):
-                errors.append("A.E. deve conter exatamente 8 dígitos numéricos.")
-            if errors:
-                st.error(" ".join(errors))
-            else:
-                update_record(selected_id, (operation_date.isoformat(), plate, carrier, cargo_value,
-                                            destination, ae, escort_type, observation,
-                                            presentation.strftime("%H:%M"), departure.strftime("%H:%M")))
-                st.session_state.records_message = "Registro atualizado com sucesso."
-                st.rerun()
+def open_record_page(page: str, record_id: int) -> None:
+    st.session_state.selected_record_id = record_id
+    set_page(page)
 
-    with delete_tab:
-        st.warning(f"Você está prestes a apagar o registro da placa {record['placa']} (A.E. {record['ae']}).")
-        confirm_delete = st.checkbox("Confirmo que desejo apagar este registro", key=f"confirm_delete_{selected_id}")
-        if st.button("Apagar registro", type="primary", disabled=not confirm_delete, key=f"delete_{selected_id}"):
-            delete_record(selected_id)
-            st.session_state.records_message = "Registro apagado com sucesso."
+
+def get_selected_record() -> pd.Series | None:
+    record_id = st.session_state.get("selected_record_id")
+    if record_id is None:
+        return None
+    df = load_records()
+    selected = df.loc[df["id"] == record_id]
+    if selected.empty:
+        return None
+    return selected.iloc[0]
+
+
+def edit_page() -> None:
+    st.title("Editar registro")
+    record = get_selected_record()
+    if record is None:
+        st.info("Selecione primeiro uma placa na página Registros.")
+        st.button("Ir para Registros", on_click=set_page, args=("Registros",))
+        return
+
+    st.caption(f"Editando a placa {record['placa']} — A.E. {record['ae']}")
+    if "edit_message" in st.session_state:
+        st.success(st.session_state.pop("edit_message"))
+
+    with st.form(f"editar_escolta_{record['id']}"):
+        col1, col2 = st.columns(2)
+        with col1:
+            operation_date = st.date_input("Data *", value=record["data"].date(), format="DD/MM/YYYY")
+            plate = st.text_input("Placa *", value=record["placa"]).upper().strip()
+            carrier = st.text_input("Transportadora *", value=record["transportadora"]).strip()
+            cargo_value = st.number_input("Valor da carga (R$) *", min_value=0.0, value=float(record["valor_carga"]), step=100.0, format="%.2f")
+            destination = st.text_input("Destino *", value=record["destino"]).strip()
+        with col2:
+            ae = st.text_input("A.E. (8 dígitos) *", value=str(record["ae"]), max_chars=8).strip()
+            escort_type = st.radio("Tipo de escolta *", ["Individual", "Comboio"], index=["Individual", "Comboio"].index(record["tipo_escolta"]), horizontal=True)
+            presentation = st.time_input("Horário de apresentação *", value=time.fromisoformat(record["horario_apresentacao"]))
+            departure = st.time_input("Horário de saída *", value=time.fromisoformat(record["horario_saida"]))
+            observation = st.text_area("Observação", value=record["observacao"] if pd.notna(record["observacao"]) else "", height=105).strip()
+        save_changes = st.form_submit_button("Salvar alterações", type="primary", use_container_width=True)
+
+    if save_changes:
+        errors = []
+        if not plate:
+            errors.append("Informe a placa.")
+        if not carrier:
+            errors.append("Informe a transportadora.")
+        if not destination:
+            errors.append("Informe o destino.")
+        if not (ae.isdigit() and len(ae) == 8):
+            errors.append("A.E. deve conter exatamente 8 dígitos numéricos.")
+        if errors:
+            st.error(" ".join(errors))
+        else:
+            update_record(int(record["id"]), (operation_date.isoformat(), plate, carrier, cargo_value,
+                                                destination, ae, escort_type, observation,
+                                                presentation.strftime("%H:%M"), departure.strftime("%H:%M")))
+            st.session_state.edit_message = "Registro atualizado com sucesso."
             st.rerun()
+
+    st.button("Voltar para Registros", on_click=set_page, args=("Registros",))
+
+
+def delete_selected_record() -> None:
+    record_id = st.session_state.get("selected_record_id")
+    if record_id is not None:
+        delete_record(record_id)
+        st.session_state.records_message = "Registro apagado com sucesso."
+    set_page("Registros")
+
+
+def delete_page() -> None:
+    st.title("Apagar registro")
+    record = get_selected_record()
+    if record is None:
+        st.info("Selecione primeiro uma placa na página Registros.")
+        st.button("Ir para Registros", on_click=set_page, args=("Registros",))
+        return
+
+    st.warning("Esta ação não pode ser desfeita.")
+    st.write(f"Você selecionou a placa **{record['placa']}**, com A.E. **{record['ae']}** e destino **{record['destino']}**.")
+    confirm_delete = st.checkbox("Confirmo que desejo apagar este registro")
+    st.button("Apagar registro definitivamente", type="primary", disabled=not confirm_delete,
+              on_click=delete_selected_record)
+    st.button("Cancelar e voltar para Registros", on_click=set_page, args=("Registros",))
 
 
 def dashboard_page() -> None:
@@ -309,10 +361,17 @@ def main() -> None:
     with st.sidebar:
         st.markdown("# 🚚")
         st.title("Escoltas")
-        page = st.radio("Navegação", ["Início", "Cadastro", "Registros", "Dashboard"], key="navigation")
+        page = st.radio("Navegação", ["Início", "Cadastro", "Registros", "Editar", "Apagar", "Dashboard"], key="navigation")
         if page != st.session_state.page:
             st.session_state.page = page
-    pages = {"Início": home_page, "Cadastro": form_page, "Registros": records_page, "Dashboard": dashboard_page}
+    pages = {
+        "Início": home_page,
+        "Cadastro": form_page,
+        "Registros": records_page,
+        "Editar": edit_page,
+        "Apagar": delete_page,
+        "Dashboard": dashboard_page,
+    }
     pages[st.session_state.page]()
 
 
