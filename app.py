@@ -347,7 +347,7 @@ def main() -> None:
     st.set_page_config(page_title="Controle de Escoltas", page_icon="🚚", layout="wide")
     st.markdown("""
         <style>
-        .stApp { background: #f7f9fc; }
+        .stApp { background: #0e1117; }
         h1, h2, h3 { color: #17365d; }
         .subtitle { color: #62748a; font-size: 1.1rem; }
         [data-testid="stMetricValue"] { color: #17365d; }
