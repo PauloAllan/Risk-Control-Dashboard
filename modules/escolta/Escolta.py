@@ -1,0 +1,168 @@
+import streamlit as st
+
+
+from modules.escolta.database import initialize_database
+
+from modules.escolta.forms import form_page
+
+from modules.escolta.dashboard import dashboard_page
+
+from modules.escolta.crud import (
+    load_records,
+    delete_record
+)
+
+from modules.escolta.export import export_excel
+
+from modules.escolta.utils import (
+    currency,
+    format_record,
+    clean_dataframe
+)
+
+
+
+def records_page():
+
+    st.title("📋 Registros de Escoltas")
+
+
+    df = load_records()
+
+
+    if df.empty:
+
+        st.info(
+            "Nenhum registro encontrado."
+        )
+
+        return
+
+
+
+    display = clean_dataframe(df)
+
+
+    st.download_button(
+        label="⬇️ Baixar Excel",
+
+        data=export_excel(df),
+
+        file_name="controle_escoltas.xlsx",
+
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+
+        type="primary"
+    )
+
+
+    st.dataframe(
+        display,
+        use_container_width=True,
+        hide_index=True
+    )
+
+
+
+    st.divider()
+
+
+    st.subheader(
+        "Gerenciar registro"
+    )
+
+
+    selected_id = st.selectbox(
+        "Selecione a escolta",
+
+        df["id"].tolist(),
+
+        format_func=lambda x:
+            format_record(
+                df.loc[df["id"] == x].iloc[0]
+            )
+    )
+
+
+
+    if st.button(
+        "🗑️ Excluir registro"
+    ):
+
+        delete_record(
+            selected_id
+        )
+
+        st.success(
+            "Registro removido."
+        )
+
+        st.rerun()
+
+
+
+def main():
+
+    st.set_page_config(
+        page_title="Controle de Escoltas",
+        page_icon="🚚",
+        layout="wide"
+    )
+
+
+    initialize_database()
+
+
+
+    st.title(
+        "🚚 Controle de Escoltas"
+    )
+
+
+    st.caption(
+        "Gestão operacional de escoltas e transporte."
+    )
+
+
+    st.divider()
+
+
+
+    menu = st.radio(
+
+        "Menu",
+
+        [
+            "Cadastro",
+            "Registros",
+            "Dashboard"
+        ],
+
+        horizontal=True
+
+    )
+
+
+
+    if menu == "Cadastro":
+
+        form_page()
+
+
+
+    elif menu == "Registros":
+
+        records_page()
+
+
+
+    elif menu == "Dashboard":
+
+        dashboard_page()
+
+
+
+
+if __name__ == "__main__":
+
+    main()
