@@ -89,7 +89,7 @@ with col1:
     ):
 
         st.switch_page(
-            "pages/Escolta.py"
+            "pages/escolta.py"
         )
 
 
