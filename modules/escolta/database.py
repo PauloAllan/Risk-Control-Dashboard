@@ -1,19 +1,21 @@
-import sqlite3
 from pathlib import Path
+import sqlite3
 
 
-# Caminho do banco
-BASE_DIR = Path(__file__).resolve().parent.parent.parent
+BASE_DIR = Path(__file__).resolve().parents[2]
 
-DB_PATH = BASE_DIR / "database" / "painel_escoltas.db"
+DATABASE_FOLDER = BASE_DIR / "database"
+
+DATABASE_FOLDER.mkdir(
+    exist_ok=True
+)
+
+
+DB_PATH = DATABASE_FOLDER / "painel_escoltas.db"
 
 
 
 def get_connection():
-
-    """
-    Cria conexão com banco SQLite.
-    """
 
     conn = sqlite3.connect(
         DB_PATH,
@@ -27,11 +29,6 @@ def get_connection():
 
 
 def initialize_database():
-
-    """
-    Cria as tabelas necessárias
-    caso ainda não existam.
-    """
 
     with get_connection() as conn:
 
